@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saved Entries</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <header id="head">
+        <h1>Saved Entries</h1>
+        <div class="actions">
+            <button id="delete-button" type="button" onclick="deleteLastEntry()">Delete last</button>
+            <button id="update-button" type="button" onclick="updateLastEntry()">Update last</button>
+        </div>
+    </header>
+    <main>
+        <p id="status" role="status" aria-live="polite"></p>
+        <section id="section" aria-label="Saved entries"></section>
+    </main>
+    <form id="entry-form">
+        <input id="entry-input" type="text" maxlength="10000" placeholder="Enter an entry" aria-label="Entry text" required>
+        <button type="submit">Add</button>
+    </form>
+
+    <script>
+        const section = document.getElementById("section");
+        const input = document.getElementById("entry-input");
+        const status = document.getElementById("status");
+        let entries = [];
+
+        function showStatus(message, isError) {
+            status.textContent = message;
+            status.classList.toggle("error", Boolean(isError));
+        }
+
+        function renderEntries() {
+            section.replaceChildren();
+            entries.forEach((entry, index) => {
+                const row = document.createElement("article");
+                row.className = "entry";
+                const number = document.createElement("span");
+                number.className = "entry-number";
+                number.textContent = (index + 1) + ".";
+                const text = document.createElement("span");
+                text.className = "entry-text";
+                text.textContent = entry.text;
+                row.append(number, text);
+                section.appendChild(row);
+            });
+        }
+
+        async function request(url, options) {
+            const response = await fetch(url, options);
+            if (response.status === 204) {
+                return null;
+            }
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || "The server could not complete the request.");
+            }
+            return result;
+        }
+
+        async function loadEntries() {
+            try {
+                entries = await request("/api/entries");
+                renderEntries();
+                showStatus("", false);
+            } catch (error) {
+                showStatus("Could not load entries: " + error.message, true);
+            }
+        }
+
+        document.getElementById("entry-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const text = input.value.trim();
+            if (!text) {
+                showStatus("Enter some text before saving.", true);
+                return;
+            }
+            try {
+                const entry = await request("/api/entries", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text })
+                });
+                entries.push(entry);
+                renderEntries();
+                input.value = "";
+                showStatus("Entry saved.", false);
+            } catch (error) {
+                showStatus("Could not save entry: " + error.message, true);
+            }
+        });
+
+        async function updateLastEntry() {
+            if (entries.length === 0) {
+                showStatus("There are no entries to update.", true);
+                return;
+            }
+            const text = input.value.trim();
+            if (!text) {
+                showStatus("Enter replacement text before updating.", true);
+                return;
+            }
+            const lastEntry = entries[entries.length - 1];
+            try {
+                const updated = await request("/api/entries/" + lastEntry.id, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text })
+                });
+                entries[entries.length - 1] = updated;
+                renderEntries();
+                input.value = "";
+                showStatus("Entry updated.", false);
+            } catch (error) {
+                showStatus("Could not update entry: " + error.message, true);
+            }
+        }
+
+        async function deleteLastEntry() {
+            if (entries.length === 0) {
+                showStatus("There are no entries to delete.", true);
+                return;
+            }
+            const lastEntry = entries[entries.length - 1];
+            try {
+                await request("/api/entries/" + lastEntry.id, { method: "DELETE" });
+                entries.pop();
+                renderEntries();
+                showStatus("Entry deleted.", false);
+            } catch (error) {
+                showStatus("Could not delete entry: " + error.message, true);
+            }
+        }
+
+        loadEntries();
+    </script>
+</body>
+</html>
